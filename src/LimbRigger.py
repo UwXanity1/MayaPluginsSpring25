@@ -1,5 +1,6 @@
-from PySide2.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSlider, QVBoxLayout, QWidget # imports classes from PySide2.QtCore module
-from PySide2.QtCore import Qt # imports 'Qt' from PySide2.QtCore module
+from PySide2.QtGui import QColor
+from PySide2.QtWidgets import QColorDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSlider, QVBoxLayout, QWidget # imports classes from PySide2.QtCore module
+from PySide2.QtCore import Qt, Signal # imports 'Qt' from PySide2.QtCore module
 import maya.OpenMayaUI as omui # imports module as 'omui'
 import maya.mel as mel
 from maya.OpenMaya import MVector
@@ -32,6 +33,7 @@ class LimbRigger: # classed named "LimbRigger"
         self.mid = "" # placeholder for mid joint in window
         self.end = "" # placeholder for end joint in window
         self.controllerSize = 5 # sets the controller size to a given int
+        self.controllerColor = [0,0,0]
 
     def FindJointBasedOnSelection(self):
         self.root = mc.ls(sl=True, type="joint")[0] # detects if a root joint has been selected 
@@ -88,27 +90,61 @@ class LimbRigger: # classed named "LimbRigger"
         mc.ikHandle(n=ikHandleName, sol="ikRPsolver", sj=self.root, ee=self.end)
 
         poleVectorLocationVals = mc.getAttr(ikHandleName + ".poleVector")[0]
-        polevector = MVector(poleVectorLocationVals[0], poleVectorLocationVals[0], poleVectorLocationVals[0])
+        polevector = MVector(poleVectorLocationVals[0], poleVectorLocationVals[1], poleVectorLocationVals[2])
         polevector.normalize()
 
         endJntLoc = self.GetObjectLocation(self.end)
         rootToEndVector = endJntLoc - rootJntLoc
 
         polevectorCtrlLoc = rootJntLoc + rootToEndVector /2 + polevector * rootToEndVector.length()
-        self.PrintVector(polevectorCtrlLoc)
         poleVectorCtrl = "ac_ik_" + self.mid
         mc.spaceLocator(n=poleVectorCtrl)
         poleVectorCtrlGrp = poleVectorCtrl + "_grp"
-        mc.group(polevector, n=poleVectorCtrlGrp)
-        mc.setAttr(poleVectorCtrlGrp + ".t", polevectorCtrlLoc.x, polevectorCtrlLoc.y, polevectorCtrlLoc.z, typ="double3")
+        mc.group(poleVectorCtrl, n=poleVectorCtrlGrp)
+        self.PrintVector(polevectorCtrlLoc)
+        mc.setAttr(poleVectorCtrlGrp + ".t", polevectorCtrlLoc.x ,polevectorCtrlLoc.y, polevectorCtrlLoc.z, typ="double3")
 
         mc.poleVectorConstraint(poleVectorCtrl, ikHandleName)
 
         ikfkBlendCtrl = "ac_ikfk_blend_" + self.root
-        ikfkBlendCtrl, ikfkBlendCtrlGrp = self.CreatePlusController(ikfkBlendCtrlGrp)
+        ikfkBlendCtrl, ikfkBlendCtrlGrp = self.CreatePlusController(ikfkBlendCtrl)
         mc.setAttr(ikfkBlendCtrlGrp+".t", rootJntLoc.x*2, rootJntLoc.y, rootJntLoc.z*2, typ="double3")
+        
+        ikfkBlendAttrName = "ikfkBlend" 
+        mc.addAttr(ikfkBlendCtrl, ln=ikfkBlendAttrName, min=0, max = 1, k=True)
+        ikfkBlendAttr = ikfkBlendCtrl + "." + ikfkBlendAttrName
+
+        mc.expression(s=f"{ikHandleName}.ikBlend={ikfkBlendAttr}")
+        mc.expression(s=f"{ikEndCtrlGrp}.v={poleVectorCtrlGrp}.v={ikfkBlendAttr}")
+        mc.expression(s=f"{rootCtrlGrp}.v=1-{ikfkBlendAttr}")
+        mc.expression(s=f"{endOrientConstraint}.{endCtrl}W0 = 1-{ikfkBlendAttr}")
+        mc.expression(s=f"{endOrientConstraint}.{ikEndCtrl}W1 = {ikfkBlendAttr}")
+
+        topGrpName = f"{self.root}_rig_grp"
+        mc.group([rootCtrlGrp, ikEndCtrlGrp, poleVectorCtrlGrp, ikfkBlendCtrlGrp], n=topGrpName)
+        mc.parent(ikHandleName, ikEndCtrl)
+
+        mc.setAttr(topGrpName+".overrideEnabled", 1)
+        mc.setAttr(topGrpName+".overrideRGBColors", 1)
+        mc.setAttr(topGrpName+".overrideColorRGB", self.controllerColor[0], self.controllerColor[1], self.controllerColor[2], type="double3")
 
 
+class ColorPicker(QWidget):
+    colorcahnged = Signal(QColor)
+    def __init__(self):
+            super().__init__()
+            self.masterLayout = QVBoxLayout()
+            self.color = QColor()
+            self.setLayout(self.masterLayout)
+            self.pickColorBtn = QPushButton()
+            self.pickColorBtn.setStyleSheet(f"background-color:black")
+            self.pickColorBtn.clicked.connect(self.PickColorBtnClicked)
+            self.masterLayout.addWidget(self.pickColorBtn)
+
+    def PickColorBtnClicked(self):
+        self.color = QColorDialog.getColor()
+        self.pickColorBtn.setStyleSheet(f"background-color:{self.color.name()}")
+        self.colorcahnged.emit(self.color)
 
 class LimbRiggerWidget(MayaWindow): # this class inherts from a previous mayawindow class
     def __init__(self): # A constructor of the limb Rigger Widget
@@ -130,6 +166,8 @@ class LimbRiggerWidget(MayaWindow): # this class inherts from a previous mayawin
         autoFindJntBtn.clicked.connect(self.AutoFindJntBtnClicked) # detects if button is clicked
         self.masterLayout.addWidget(autoFindJntBtn) # adds the "Auto Find" button to master layout
 
+        # Controller Size
+
         ctrlSizeSlider = QSlider()
         ctrlSizeSlider.setOrientation(Qt.Horizontal)
         ctrlSizeSlider.setRange(1,30)
@@ -142,9 +180,20 @@ class LimbRiggerWidget(MayaWindow): # this class inherts from a previous mayawin
         ctrlSizeLayout.addWidget(self.ctrlSizeLabel)
         self.masterLayout.addLayout(ctrlSizeLayout)
 
+        # Controller Color
+
+        colorPicker = ColorPicker()
+        colorPicker.colorcahnged.connect(self.ColorPickerChanged)
+        self.masterLayout.addWidget(colorPicker)
+
         rigLimbBtn = QPushButton("Rig Limb") # creates a button named "Rig Limb" 
         rigLimbBtn.clicked.connect(lambda : self.rigger.RigLimb()) 
         self.masterLayout.addWidget(rigLimbBtn) # adds the "Rig Limb" button to the master Layout
+
+    def ColorPickerChanged(self, newColor: QColor):
+        self.rigger.controllerColor[0] = newColor.redF()
+        self.rigger.controllerColor[1] = newColor.greenF()
+        self.rigger.controllerColor[2] = newColor.blueF()
 
     def CtrlSizeSliderChanged(self, newValue):
         self.ctrlSizeLabel.setText(f"{newValue}")
