@@ -1,3 +1,7 @@
+import importlib
+import Maya_Utils
+importlib.reload(Maya_Utils)
+from Maya_Utils import MayaWindow
 from PySide2.QtGui import QColor
 from PySide2.QtWidgets import QColorDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPushButton, QSlider, QVBoxLayout, QWidget # imports classes from PySide2.QtCore module
 from PySide2.QtCore import Qt, Signal # imports 'Qt' from PySide2.QtCore module
@@ -6,28 +10,9 @@ import maya.mel as mel
 from maya.OpenMaya import MVector
 import shiboken2 # translates Qt class to Python
 
-def GetMayaMainWindow()->QMainWindow: # fucntion to create maya main window
-    mayaWindow = omui.MQtUtil.mainWindow() # creates main window for the maya widget
-    return shiboken2.wrapInstance(int(mayaWindow), QMainWindow)
-
-def DeleteWidgetWithName(name): # function to delete maya main window
-    for widget in GetMayaMainWindow().findChildren(QWidget, name): # finds new instances of the maya window in the GetMayaMainWindow class 
-        widget.deleteLater() # delets the window
-
-     
-class MayaWindow(QWidget): # class called MayaWindow with QWidget as a definition
-    def __init__(self):
-        super().__init__(parent = GetMayaMainWindow())  
-        DeleteWidgetWithName(self.GetWidgetUniqueName())  
-        self.setWindowFlags(Qt.WindowType.Window) 
-        self.setObjectName(self.GetWidgetUniqueName()) 
-
-    def GetWidgetUniqueName(self): # inherited function 
-       return "UniqueName" # returns the output of the GetWidgetUniqueName function 
-
 import maya.cmds as mc # transfers over the the actions maya has and registers it as 'mc'.
     
-class LimbRigger: # classed named "LimbRigger"
+class LimbRigger:
     def __init__(self): 
         self.root = "" # placeholder for root joint in window
         self.mid = "" # placeholder for mid joint in window
@@ -70,6 +55,8 @@ class LimbRigger: # classed named "LimbRigger"
     def PrintVector(self, vector):
         print(f"<{vector.x}, {vector.y}, {vector.z}>")
 
+        # Creating FK controllers for Joints
+
     def RigLimb(self):
         rootCtrl, rootCtrlGrp = self.CreateFKControllerForJoint(self.root) # creates an FK controller for "root" joint
         midCtrl, midCtrlGrp = self.CreateFKControllerForJoint(self.mid) # creates an FK controller for "mid" joint
@@ -86,8 +73,12 @@ class LimbRigger: # classed named "LimbRigger"
         rootJntLoc = self.GetObjectLocation(self.root)
         self.PrintVector(rootJntLoc)
 
+        # Creating IK handles for the joints
+
         ikHandleName = "ikHandle_" + self.end
         mc.ikHandle(n=ikHandleName, sol="ikRPsolver", sj=self.root, ee=self.end)
+
+        # Pole Vectors
 
         poleVectorLocationVals = mc.getAttr(ikHandleName + ".poleVector")[0]
         polevector = MVector(poleVectorLocationVals[0], poleVectorLocationVals[1], poleVectorLocationVals[2])
@@ -105,6 +96,8 @@ class LimbRigger: # classed named "LimbRigger"
         mc.setAttr(poleVectorCtrlGrp + ".t", polevectorCtrlLoc.x ,polevectorCtrlLoc.y, polevectorCtrlLoc.z, typ="double3")
 
         mc.poleVectorConstraint(poleVectorCtrl, ikHandleName)
+
+        # F/IK Blend
 
         ikfkBlendCtrl = "ac_ikfk_blend_" + self.root
         ikfkBlendCtrl, ikfkBlendCtrlGrp = self.CreatePlusController(ikfkBlendCtrl)
@@ -124,10 +117,11 @@ class LimbRigger: # classed named "LimbRigger"
         mc.group([rootCtrlGrp, ikEndCtrlGrp, poleVectorCtrlGrp, ikfkBlendCtrlGrp], n=topGrpName)
         mc.parent(ikHandleName, ikEndCtrl)
 
+        # Enabling Drawing Overrides 
+
         mc.setAttr(topGrpName+".overrideEnabled", 1)
         mc.setAttr(topGrpName+".overrideRGBColors", 1)
         mc.setAttr(topGrpName+".overrideColorRGB", self.controllerColor[0], self.controllerColor[1], self.controllerColor[2], type="double3")
-
 
 class ColorPicker(QWidget):
     colorcahnged = Signal(QColor)
@@ -152,8 +146,8 @@ class LimbRiggerWidget(MayaWindow): # this class inherts from a previous mayawin
         self.rigger = LimbRigger() # "self.rigger" is set to the LimbRigger class 
         self.setWindowTitle("Limb Rigger")
 
-        self.masterLayout = QVBoxLayout() # Creates the master layout as a veritcal layout
-        self.setLayout(self.masterLayout) # Sets the layout of the widget to be master Layout
+        self.masterLayout = QVBoxLayout()
+        self.setLayout(self.masterLayout) 
         
         tootTipLabel = QLabel("Select the first joint of the limb, and press the auto find button") # creates a str variable
         self.masterLayout.addWidget(tootTipLabel) # adds the aformentioned variable to the master layout
@@ -182,13 +176,26 @@ class LimbRiggerWidget(MayaWindow): # this class inherts from a previous mayawin
 
         # Controller Color
 
-        colorPicker = ColorPicker()
-        colorPicker.colorcahnged.connect(self.ColorPickerChanged)
-        self.masterLayout.addWidget(colorPicker)
+        self.colorPicker = ColorPicker()
+        self.colorPicker.colorcahnged.connect(self.ColorPickerChanged)
+        self.masterLayout.addWidget(self.colorPicker)
 
-        rigLimbBtn = QPushButton("Rig Limb") # creates a button named "Rig Limb" 
+        rigLimbBtn = QPushButton("Rig Limb") 
         rigLimbBtn.clicked.connect(lambda : self.rigger.RigLimb()) 
-        self.masterLayout.addWidget(rigLimbBtn) # adds the "Rig Limb" button to the master Layout
+        self.masterLayout.addWidget(rigLimbBtn) 
+
+        # Re-set Color
+        
+        setColorBtn = QPushButton("Set Color")
+        self.masterLayout.addWidget(setColorBtn)
+        setColorBtn.clicked.connect(self.SetColorBtnClickced)
+
+    def SetColorBtnClickced(self):
+        selection = mc.ls(sl=True)[0]
+        color = self.colorPicker.color
+        mc.setAttr(selection +".overrideEnabled", 1)
+        mc.setAttr(selection +".overrideRGBColors", 1)
+        mc.setAttr(selection +".overrideColorRGB", color.redF(), color.greenF(), color.blueF(), type="double3")
 
     def ColorPickerChanged(self, newColor: QColor):
         self.rigger.controllerColor[0] = newColor.redF()
@@ -199,12 +206,12 @@ class LimbRiggerWidget(MayaWindow): # this class inherts from a previous mayawin
         self.ctrlSizeLabel.setText(f"{newValue}")
         self.rigger.controllerSize = newValue
 
-    def AutoFindJntBtnClicked(self): # function designated to call the "Auto Find" button
-        self.rigger.FindJointBasedOnSelection() # When this button is click, the FindJointBasedOnSelection function will run
-        self.jntsListLineEdit.setText(f"{self.rigger.root},{self.rigger.mid},{self.rigger.end}") # sets the text in input box to the selected joints
+    def AutoFindJntBtnClicked(self): 
+        self.rigger.FindJointBasedOnSelection() 
+        self.jntsListLineEdit.setText(f"{self.rigger.root},{self.rigger.mid},{self.rigger.end}")
 
 limbRiggerWidget = LimbRiggerWidget()
 limbRiggerWidget.show()
 
-GetMayaMainWindow()
+
 
