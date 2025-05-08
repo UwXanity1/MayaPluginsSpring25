@@ -40,6 +40,41 @@ class ProxyGenerator:
         ctrls = []
         for jnt, verts in jntVertDict.items():
             newChunk = self.CreateProxyModelForJntandVerts(jnt, verts)
+            if not newChunk:
+                continue 
+
+            newSkinCluster = mc.skinCluster(self.jnts, newChunk)[0]
+            mc.copySkinWeights(ss=self.skin, ds=newSkinCluster, nm=True, sa="closestPoint", ia="closestJoint")
+            chuncks.append(newChunk)
+
+            ctrlName = "ac_" + jnt + "proxy"
+            mc.spaceLocator(n=ctrlName)
+            ctrlGrpName = ctrlName + "grp"
+            mc.group(ctrlName, n=ctrlGrpName)
+            mc.matchTransform(ctrlGrpName, jnt)
+
+            visibilityAttr = "vis"
+            mc.addAttr(ctrlName, ln=visibilityAttr, min=0, max=1, dv=1, k=True)
+            mc.connectAttr(ctrlName + "." + visibilityAttr, newChunk + ".v")
+            ctrls.append(ctrlName)
+
+        proxyTopGrp = self.model + "_proxy_grp"
+        mc.group(chuncks, n=proxyTopGrp)
+
+        ctrlTopGrp = "ac_" + self.model + "_proxy_grp"
+        mc.group(ctrls, n=ctrlTopGrp)
+            
+        globalProxyCtrl = "ac_" + self.model + "_proxy_global"
+        mc.circle(n=globalProxyCtrl, r=20)
+
+        mc.parent(proxyTopGrp, globalProxyCtrl)
+        mc.parent(ctrlTopGrp, globalProxyCtrl)
+
+        mc.setAttr(proxyTopGrp + ".inheritsTransform", 0)
+            
+        mc.addAttr(globalProxyCtrl, ln="vis", min=0, max=1, k=True, dv=1)
+        mc.connectAttr(globalProxyCtrl + ".vis", proxyTopGrp + ".v")
+
 
     def CreateProxyModelForJntandVerts(self, jnt, verts):
         if not verts:
@@ -80,6 +115,9 @@ class ProxyGenerator:
         
     def GetJntWithMaxInfluence(self, vert, skin):
         weights = mc.skinPercent(skin, vert, q=True, v=True)
+        if not weights:
+            return None
+        
         jnts = mc.skinPercent(skin, vert, q=True, t=None)
 
         maxWeightIndex = 0
@@ -90,7 +128,6 @@ class ProxyGenerator:
                 maxWeightIndex = i
 
         return jnts[maxWeightIndex]
-
 
 class ProxyGeneratorWidget(MayaWindow):
     def __init__(self):

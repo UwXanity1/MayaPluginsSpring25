@@ -10,6 +10,8 @@ this plugin rigs 3 joint limbs with ik and fk blend
 
 ## Proxy Generator
 
+[Proxy Generator Script]("./src/ProxyGenerator.py")
+
 this plugin allows for a rigged mesh to be broken down into parts so animators can focus on certain areas
 
 Here how it works - 
@@ -163,3 +165,15 @@ class ProxyGeneratorWidget(MayaWindow):
 ProxyGeneratorWidget().show()
 ```
 ^ Creates the Proxy Generator Window
+
+## Vertex to Joint Tool
+
+[VertextoJointscirpt]("./src/VertextoJoint.py")
+
+this plugin can be used to create joints from selected vertices. Perfect for rigging appendages like fingers, tentacles, etc.
+
+* Easy placement of joints
+* Makes connecting joint chains quicker and easier
+* Comes with contorller size function
+
+
