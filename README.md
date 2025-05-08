@@ -168,7 +168,7 @@ ProxyGeneratorWidget().show()
 
 ## Vertex to Joint Tool
 
-[VertextoJointscirpt]("./src/VertextoJoint.py")
+[VertextoJointscript](src/VertextoJoint.py)
 
 this plugin can be used to create joints from selected vertices. Perfect for rigging appendages like fingers, tentacles, etc.
 
@@ -176,4 +176,4 @@ this plugin can be used to create joints from selected vertices. Perfect for rig
 * Makes connecting joint chains quicker and easier
 * Comes with contorller size function
 
-
+<img src="VertextoJoint_Ex.PNG" width="348">
